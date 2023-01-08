@@ -1,0 +1,69 @@
+#######################
+###   None config   ###
+#######################
+
+strategy: hedge
+
+# Whether to hedge based on value or amount
+value_mode: true
+
+# The ratio of the hedge amount to the total asset amount
+hedge_ratio: 1.0
+
+# The interval in seconds to check for hedge.
+hedge_interval: 0.01
+
+# The minimum trade size in quote asset.
+min_trade_size: 0.0
+
+# The slippage tolerance for the hedge order.
+slippage: 0.001
+
+# The name of the hedge exchange connector.
+hedge_connector: bybit_perpetual
+
+# The name of the trading pair.
+hedge_markets:
+- AVAX-USDT
+
+# The offsets for each trading pair.
+hedge_offsets:
+- 0.0
+
+# The leverage to use for the market.
+hedge_leverage: 50
+
+# The position mode to use for the market.
+hedge_position_mode: ONEWAY
+
+# The name of the hedge exchange connector.
+connector_0:
+  connector: dydx_perpetual
+  markets:
+  - AVAX-USD
+  offsets:
+  - 0.0
+
+# The name of the hedge exchange connector.
+connector_1:
+  connector: null
+  markets: null
+  offsets: null
+
+# The name of the hedge exchange connector.
+connector_2:
+  connector: null
+  markets: null
+  offsets: null
+
+# The name of the hedge exchange connector.
+connector_3:
+  connector: null
+  markets: null
+  offsets: null
+
+# The name of the hedge exchange connector.
+connector_4:
+  connector: null
+  markets: null
+  offsets: null
