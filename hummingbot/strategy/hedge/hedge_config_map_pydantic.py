@@ -159,6 +159,22 @@ class HedgeConfigMap(BaseStrategyConfigMap):
             prompt_on_new=True,
         ),
     )
+    hedge_tx_cost: Decimal = Field(
+        default=Decimal("0.0004"),
+        description="Temporary parameter for estimating backtest.",
+        client_data=ClientFieldData(
+            prompt=lambda mi: "Enter the hedge_tx_cost",
+            prompt_on_new=True,
+        ),
+    )
+    wallet: str = Field(
+        default="0xa0271056e55269877a2060449D2baC552c46052A",
+        description="The wallet to hedge.",
+        client_data=ClientFieldData(
+            prompt=lambda mi: "Enter the wallet to hedge",
+            prompt_on_new=True,
+        ),
+    )
     hedge_connector: ExchangeEnum = Field(
         default=...,
         description="The name of the hedge exchange connector.",

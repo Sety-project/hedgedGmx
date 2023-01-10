@@ -1,0 +1,79 @@
+#######################
+###   None config   ###
+#######################
+
+strategy: hedge
+
+# Whether to hedge based on value or amount
+value_mode: false
+
+# The ratio of the hedge amount to the total asset amount
+hedge_ratio: 1.0
+
+# The interval in seconds to check for hedge.
+hedge_interval: 10
+
+# The minimum trade size in quote asset.
+min_trade_size: 1
+
+# The slippage tolerance for the hedge order.
+slippage: 0.001
+
+# Temporary parameter for estimating backtest
+hedge_tx_cost: 0.0004
+
+# wallet to hedge
+wallet: "0xFaf2A8b5fa78cA2786cEf5F7e19f6942EC7cB531"
+
+# The name of the hedge exchange connector.
+hedge_connector: dydx_perpetual
+
+# The name of the trading pair.
+hedge_markets:
+- BTC-USD
+- ETH-USD
+- AVAX-USD
+
+# The offsets for each trading pair.
+hedge_offsets:
+- 0.0
+
+# The leverage to use for the market.
+hedge_leverage: 20
+
+# The position mode to use for the market.
+hedge_position_mode: ONEWAY
+
+# The name of the hedge exchange connector.
+connector_0:
+  connector: bybit_perpetual
+  markets:
+  - BTC-USDT
+  - ETH-USDT
+  - AVAX-USDT
+  offsets:
+  - 0.0
+
+# The name of the hedge exchange connector.
+connector_1:
+  connector: null
+  markets: null
+  offsets: null
+
+# The name of the hedge exchange connector.
+connector_2:
+  connector: null
+  markets: null
+  offsets: null
+
+# The name of the hedge exchange connector.
+connector_3:
+  connector: null
+  markets: null
+  offsets: null
+
+# The name of the hedge exchange connector.
+connector_4:
+  connector: null
+  markets: null
+  offsets: null

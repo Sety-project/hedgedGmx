@@ -1,5 +1,8 @@
+import asyncio
 import logging
+import os.path
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
 
 import pandas as pd
@@ -12,6 +15,7 @@ from hummingbot.core.data_type.limit_order import LimitOrder
 from hummingbot.core.data_type.order_candidate import OrderCandidate, PerpetualOrderCandidate
 from hummingbot.core.network_iterator import NetworkStatus
 from hummingbot.logger import HummingbotLogger
+from hummingbot.strategy.hedge.gmx_api import GmxAPI
 from hummingbot.strategy.hedge.hedge_config_map_pydantic import HedgeConfigMap
 from hummingbot.strategy.market_trading_pair_tuple import MarketTradingPairTuple
 from hummingbot.strategy.strategy_py_base import StrategyPyBase
@@ -81,6 +85,18 @@ class HedgeStrategy(StrategyPyBase):
         self._hedge_interval = config_map.hedge_interval
         self._value_mode = config_map.value_mode
         self._offsets = offsets
+
+        # TODO: hacky: if wallet is present then we are hedging gmx and not the connector0
+        if hasattr(config_map, 'gmx_wallet'):
+            self.logger().info("gmx_wallet")
+            self.gmx_api = GmxAPI({'gmx_wallet': config_map.wallet,
+                                   'logger': self.logger()})
+            self._all_markets = self._hedge_market_pairs
+        else:
+            self.logger().info("not gmx_wallet")
+            self.gmx_api = None
+            self._all_markets = self._hedge_market_pairs + self._market_pairs
+
         self._status_report_interval = status_report_interval
         self._all_markets = self._hedge_market_pairs + self._market_pairs
         self._last_timestamp = 0
@@ -254,6 +270,7 @@ class HedgeStrategy(StrategyPyBase):
         Check if hedge interval has passed and process hedge if so
         :param timestamp: clock timestamp
         """
+        self.logger().debug("tick...")
         if timestamp - self._last_timestamp < self._hedge_interval:
             return
         self._last_timestamp = timestamp
@@ -278,7 +295,16 @@ class HedgeStrategy(StrategyPyBase):
             self.logger().info("Active orders present.")
             return
         self.logger().debug("Checking hedge conditions...")
-        self.hedge()
+        if self.gmx_api is not None:
+            asyncio.ensure_future(self.gmx_api.reconcile())
+            self.hedge()
+            # TODO not a proper database format
+            pnlexplain_path = os.path.join(Path.home(), 'StakeCap', 'hummingbot', 'data', 'gmx_pnl.csv')
+            pd.DataFrame(self.gmx_api.compile_pnlexplain(flatten_dict=True)).to_csv(pnlexplain_path,
+                                                                                    index_label='timestamp',
+                                                                                    mode='a+')
+        else:
+            self.hedge()
 
     def get_positions(self, market_pair: MarketTradingPairTuple, position_side: PositionSide = None) -> List[Position]:
         """
@@ -397,7 +423,12 @@ class HedgeStrategy(StrategyPyBase):
         :params market_list: The list of markets to get the amount of the base asset of.
         :returns: The direction to hedge (buy/sell) and the amount of the base asset of the market pair.
         """
-        total_amount = sum(self.get_base_amount(market_pair) for market_pair in market_list)
+        if self.gmx_api is not None:
+            glp_position = self.gmx_api.state.depositBalances()
+            total_amount = Decimal(glp_position * self.gmx_api.state.partial_delta(hedge_pair.trading_pair, normalized=True))
+        else:
+            total_amount = sum(self.get_base_amount(market_pair) for market_pair in market_list)
+
         hedge_amount = self.get_base_amount(hedge_pair)
         net_amount = total_amount * self._hedge_ratio + hedge_amount
         is_buy = net_amount < 0
