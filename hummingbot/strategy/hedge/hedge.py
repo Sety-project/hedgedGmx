@@ -16,10 +16,14 @@ from hummingbot.core.data_type.order_candidate import OrderCandidate, PerpetualO
 from hummingbot.core.network_iterator import NetworkStatus
 from hummingbot.logger import HummingbotLogger
 from hummingbot.strategy.hedge.gmx_api import GmxAPI
+from hummingbot.strategy.hedge.gmx_hedge_utils import reform_dict
 from hummingbot.strategy.hedge.hedge_config_map_pydantic import HedgeConfigMap
 from hummingbot.strategy.market_trading_pair_tuple import MarketTradingPairTuple
 from hummingbot.strategy.strategy_py_base import StrategyPyBase
 from hummingbot.strategy.utils import order_age
+
+# from bin.hummingbot import kafka_consumer
+
 
 hedge_logger = None
 
@@ -89,8 +93,7 @@ class HedgeStrategy(StrategyPyBase):
         # TODO: hacky: if wallet is present then we are hedging gmx and not the connector0
         if hasattr(config_map, 'gmx_wallet'):
             self.logger().info("gmx_wallet")
-            self.gmx_api = GmxAPI({'gmx_wallet': config_map.wallet,
-                                   'logger': self.logger()})
+            self.gmx_api = GmxAPI(config_map, logger=self.logger())
             self._all_markets = self._hedge_market_pairs
         else:
             self.logger().info("not gmx_wallet")
@@ -300,11 +303,15 @@ class HedgeStrategy(StrategyPyBase):
             self.hedge()
             # TODO not a proper database format
             pnlexplain_path = os.path.join(Path.home(), 'StakeCap', 'hummingbot', 'data', 'gmx_pnl.csv')
-            pd.DataFrame(self.gmx_api.compile_pnlexplain(flatten_dict=True)).to_csv(pnlexplain_path,
-                                                                                    index_label='timestamp',
-                                                                                    mode='a+')
+            pd.DataFrame([{x.timestamp: reform_dict(x)} for x in self.gmx_api.compile_pnlexplain()]).to_csv(pnlexplain_path,
+                                                                                                            index_label='timestamp',
+                                                                                                            mode='w')
         else:
             self.hedge()
+
+        # TODO: this is just example kafka code
+        # global kafka_consumer
+        # event_buffer = kafka_consumer.read_buffer()
 
     def get_positions(self, market_pair: MarketTradingPairTuple, position_side: PositionSide = None) -> List[Position]:
         """

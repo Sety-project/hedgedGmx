@@ -25,6 +25,8 @@ from hummingbot.core.gateway import start_existing_gateway_container
 from hummingbot.core.utils import detect_available_port
 from hummingbot.core.utils.async_utils import safe_gather
 
+kafka_consumer = None
+
 
 class UIStartListener(EventListener):
     def __init__(self, hummingbot_app: HummingbotApplication, is_quickstart: Optional[bool] = False):
@@ -62,7 +64,12 @@ async def main_async(client_config_map: ClientConfigAdapter):
     start_listener: UIStartListener = UIStartListener(hb)
     hb.app.add_listener(HummingbotUIEvent.Start, start_listener)
 
-    tasks: List[Coroutine] = [hb.run(), start_existing_gateway_container(client_config_map)]
+    # TODO: kafka launches as a hacky global variable but should be a gateway
+    # global kafka_consumer
+    # kafka_consumer = NodeRed()
+    # await kafka_consumer.start()
+
+    tasks: List[Coroutine] = [hb.run(), start_existing_gateway_container(client_config_map)]  # TODO: , kafka_consumer.run() after port conflict is fixed
     if client_config_map.debug_console:
         if not hasattr(__builtins__, "help"):
             import _sitebuiltins
