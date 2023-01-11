@@ -1,13 +1,26 @@
 #!/usr/bin/env python3
 import asyncio
+import datetime
 import functools
 import platform
-import threading
 
 if platform.system() == 'Windows':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 safe_gather_limit = 40
+
+
+def myUtcNow(return_type='float'):
+    result = datetime.datetime.utcnow()
+    if return_type == 'datetime':
+        return result
+    result = result.replace(tzinfo=datetime.timezone.utc).timestamp() * 1000
+    if return_type == 'float':
+        return result
+    result = int(result)
+    if return_type == 'int':
+        return result
+    raise Exception(f'invalid return_type {return_type}')
 
 
 def async_wrap(f):
@@ -32,7 +45,12 @@ async def semaphore_safe_gather(tasks, n=safe_gather_limit, semaphore=None, retu
     return await asyncio.gather(*(sem_task(task) for task in tasks), return_exceptions=return_exceptions)
 
 
-class CustomRLock(threading._PyRLock):
-    @property
-    def count(self):
-        return self._count
+def reform_dict(dictionary, t=tuple(), reform={}):
+    for key, val in dictionary.items():
+        t = t + (key,)
+        if isinstance(val, dict):
+            reform_dict(val, t, reform)
+        else:
+            reform.update({t: val})
+        t = t[:-1]
+    return reform

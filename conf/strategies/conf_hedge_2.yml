@@ -11,7 +11,7 @@ value_mode: false
 hedge_ratio: 1.0
 
 # The interval in seconds to check for hedge.
-hedge_interval: 10
+hedge_interval: 60
 
 # The minimum trade size in quote asset.
 min_trade_size: 1
@@ -23,7 +23,7 @@ slippage: 0.001
 hedge_tx_cost: 0.0004
 
 # wallet to hedge
-wallet: "0xFaf2A8b5fa78cA2786cEf5F7e19f6942EC7cB531"
+gmx_wallet: "0xFaf2A8b5fa78cA2786cEf5F7e19f6942EC7cB531"
 
 # The name of the hedge exchange connector.
 hedge_connector: dydx_perpetual
@@ -46,7 +46,7 @@ hedge_position_mode: ONEWAY
 
 # The name of the hedge exchange connector.
 connector_0:
-  connector: bybit_perpetual
+  connector: binance_perpetual
   markets:
   - BTC-USDT
   - ETH-USDT

@@ -4,7 +4,7 @@
 
 instance_id: 28085da82b16e67eb30875b9ed9c7c9fac8489f0
 
-log_level: INFO
+log_level: DEBUG
 
 debug_console: false
 
@@ -187,4 +187,4 @@ color:
 # The tick size is the frequency with which the clock notifies the time iterators by calling the
 # c_tick() method, that means for example that if the tick size is 1, the logic of the strategy 
 # will run every second.
-tick_size: 0.1
+tick_size: 1.0

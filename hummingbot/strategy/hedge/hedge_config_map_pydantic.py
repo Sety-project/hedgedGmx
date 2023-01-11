@@ -167,7 +167,7 @@ class HedgeConfigMap(BaseStrategyConfigMap):
             prompt_on_new=True,
         ),
     )
-    wallet: str = Field(
+    gmx_wallet: str = Field(
         default="0xa0271056e55269877a2060449D2baC552c46052A",
         description="The wallet to hedge.",
         client_data=ClientFieldData(
