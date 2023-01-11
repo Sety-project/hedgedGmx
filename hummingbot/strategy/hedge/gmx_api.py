@@ -1,5 +1,4 @@
 import asyncio
-import datetime
 import itertools
 import json
 import urllib
@@ -8,20 +7,7 @@ import pandas as pd
 from eth_typing import Address
 from web3 import Web3
 
-from hummingbot.strategy.hedge.sety_async_utils import async_wrap, semaphore_safe_gather
-
-
-def myUtcNow(return_type='float'):
-    result = datetime.datetime.utcnow()
-    if return_type == 'datetime':
-        return result
-    result = result.replace(tzinfo=datetime.timezone.utc).timestamp() * 1000
-    if return_type == 'float':
-        return result
-    result = int(result)
-    if return_type == 'int':
-        return result
-    raise Exception(f'invalid return_type {return_type}')
+from hummingbot.strategy.hedge.gmx_hedge_utils import async_wrap, myUtcNow, reform_dict, semaphore_safe_gather
 
 
 class GmxAPI:
@@ -62,9 +48,8 @@ class GmxAPI:
               'BTC_E': {'address': "0x152b9d0FdC40C096757F570A51E494bd4b943E50", 'decimal': 1e8, 'volatile': True, 'normalized_symbol': 'BTC-USDT'}}
     reward_static = {}
     check_tolerance = 1e-4
-    fee = 0.001
-    tx_cost = 0.005
     semaphore_safe_gather_limit = 9
+    cache_size = 1000
 
     # class Position:
     #     def __init__(self, collateral, entryFundingRate, size, lastIncreasedTime):
@@ -74,9 +59,9 @@ class GmxAPI:
     #         self.lastIncreasedTime = lastIncreasedTime
 
     class State:
-        def __init__(self, parameters):
-            self.wallet = parameters['wallet']
-            self.logger = parameters['logger']
+        def __init__(self, parameters, logger=None):
+            self.gmx_wallet = parameters.gmx_wallet
+            self.logger = logger
 
             self.poolAmounts = {key: 0 for key in GmxAPI.static}
             self.tokenBalances = {key: 0 for key in GmxAPI.static}
@@ -199,7 +184,9 @@ class GmxAPI:
             coros.append(async_wrap(lambda x: GmxAPI.glp_manager.getAumInUsdg(
                 False).call() / GmxAPI.glp.totalSupply().call())(None))
 
+            time0 = myUtcNow()
             results_values = await semaphore_safe_gather(coros, semaphore=asyncio.Semaphore(GmxAPI.semaphore_safe_gather_limit))  # IT'S CRUCIAL TO MAINTAIN ORDER....
+            self.timestamp = 0.5 * (myUtcNow() + time0)
 
             functions_list = ['tokenBalances', 'poolAmounts', 'usdgAmounts', 'pricesUp', 'pricesDown', 'guaranteedUsd',
                               'reservedAmounts', 'globalShortSizes', 'globalShortAveragePrices', 'feeReserves']
@@ -208,8 +195,8 @@ class GmxAPI:
                        enumerate(itertools.product(GmxAPI.static.keys(), functions_list))}
             results = {**results, **{('totalSupply', 'total'): results_values[-2],
                                      ('actualAum', 'total'): results_values[-1],
-                                     ('rewards', 'WAVAX'): GmxAPI.reward_tracker.claimable(self.wallet).call() / 1e18,
-                                     ('rewards', 'esGMX'): GmxAPI.esGMXReward.claimableReward(self.wallet).call() / 1e18}}
+                                     ('rewards', 'WAVAX'): GmxAPI.reward_tracker.claimable(self.gmx_wallet).call() / 1e18,
+                                     ('rewards', 'esGMX'): GmxAPI.esGMXReward.claimableReward(self.gmx_wallet).call() / 1e18}}
 
             for function in functions_list:
                 setattr(self, function, {key: results[(function, key)] for key in GmxAPI.static})
@@ -217,20 +204,32 @@ class GmxAPI:
             self.actualAum = {'total': results[('actualAum', 'total')]}
             self.rewards = {'WAVAX': results[('rewards', 'WAVAX')],
                             'esGMX': results[('rewards', 'esGMX')]}
-
             if False:
                 self.add_weights()
+                pd.DataFrame(index=[self.state.timestamp],
+                             data=reform_dict(self.serialize())).to_csv('/home/david/StakeCap/hummingbot/data/state.csv',
+                                                                        mode='a')
+
+        def serialize(self):
+            result = {key: getattr(self, key)
+                      for key in ['tokenBalances', 'poolAmounts', 'usdgAmounts', 'pricesUp', 'pricesDown',
+                                  'guaranteedUsd',
+                                  'reservedAmounts', 'globalShortSizes', 'globalShortAveragePrices', 'feeReserves',
+                                  'actualAum', 'totalSupply', 'rewards']}
+            return result
 
         def depositBalances(self):
-            feeGlp = GmxAPI.reward_tracker.stakedAmounts(self.wallet).call() / 1e18
-            # feeGmx = GmxAPI.reward_tracker.depositBalances(self.wallet,GmxAPI.feeGmxTracker).call() / 1e18
+            feeGlp = GmxAPI.reward_tracker.stakedAmounts(self.gmx_wallet).call() / 1e18
+            # feeGmx = GmxAPI.reward_tracker.depositBalances(self.gmx_wallet,GmxAPI.feeGmxTracker).call() / 1e18
             return feeGlp
 
-    def __init__(self, parameters):
+    def __init__(self, parameters, logger=None):
         super().__init__()
-        self.logger = parameters['logger']
+        self.parameters = parameters
+        self.logger = logger
         self.timestamp = None
-        self.state = GmxAPI.State(parameters)
+        self.state = GmxAPI.State(parameters, logger=logger)
+        self.pnlexplain: list[dict] = []  # collections.deque(maxlen=GmxAPI.cache_size)
         try:
             self.stake_vault = None  # TODO: VaultEthereumWallet(wallet_id='gmx_hedged')
         except Exception:
@@ -241,31 +240,26 @@ class GmxAPI:
 
     async def reconcile(self) -> None:
         await self.state.reconcile()
-        self.timestamp = myUtcNow(return_type='datetime')
+        self.timestamp = self.state.timestamp
+        myUtcNow(return_type='datetime')
 
     def serialize(self) -> dict:
-        result = {key: getattr(self.state, key)
-                  for key in ['tokenBalances', 'poolAmounts', 'usdgAmounts', 'pricesUp', 'pricesDown',
-                              'guaranteedUsd',
-                              'reservedAmounts', 'globalShortSizes', 'globalShortAveragePrices', 'feeReserves',
-                              'actualAum', 'totalSupply', 'rewards']}
-        result['timestamp'] = self.timestamp
-        return result
+        return self.state.serialize()
 
     def compile_pnlexplain(self, do_calcs=True, flatten_dict=False):  # -> list[dict[str, typing.Any]]:
         # venue_api already reconciled by reconcile()
-        current = self.strategy.parents['GLP'].venue_api.serialize()
+        current = self.serialize()
 
         # compute risk
         if do_calcs:
-            current_state = self.strategy.parents['GLP'].venue_api.state
+            current_state = self.state
             current = {**current, **{'delta': {key: current_state.partial_delta(key) for key in GmxAPI.static},
                                      'valuation': {key: current_state.valuation(key) for key in GmxAPI.static}}}
             current['delta']['total'] = sum(current['delta'].values())
             current['valuation']['total'] = sum(current['valuation'].values())
             # compute plex
             if len(self.pnlexplain) > 0:
-                previous = self.pnlexplain[-1]
+                previous = list(self.pnlexplain[-1].values())[0]
                 # delta_pnl
                 current = {**current, **{'delta_pnl': {
                     key: previous['delta'][key] * (current['pricesDown'][key] - previous['pricesDown'][key])
@@ -286,27 +280,25 @@ class GmxAPI:
 
                 # capital and tx cost. Don't update GLP.
                 current['capital'] = {
-                    key: abs(current['delta'][key]) * current['pricesDown'][key] * self.strategy.parents['GLP'].parameters['min_trade_size'] for key
+                    key: abs(current['delta'][key]) * current['pricesDown'][key] * float(self.parameters.min_trade_size) for key
                     in GmxAPI.static}
 
                 # delta hedge cost
                 # TODO:self.strategy.hedge_strategy.venue_api.sweep_price_atomic(symbol, sizeUSD, include_taker_vs_maker_fee=True)
                 current['tx_cost'] = {
-                    key: -abs(current['delta'][key] - previous['delta'][key]) * self.strategy.parents['GLP'].parameters['hedge_tx_cost'] for key in
+                    key: -abs(current['delta'][key] - previous['delta'][key]) * float(self.parameters.hedge_tx_cost) for key in
                     GmxAPI.static}
                 current['tx_cost']['total'] = sum(current['tx_cost'].values())
             else:
                 # initialize capital
                 current['capital'] = {
-                    key: abs(current['delta'][key]) * current['pricesDown'][key] * self.strategy.parents['GLP'].parameters['min_trade_size'] for key
+                    key: abs(current['delta'][key]) * current['pricesDown'][key] * float(self.parameters.min_trade_size) for key
                     in GmxAPI.static}
                 current['capital']['total'] = current['actualAum']['total']
                 # initial delta hedge cost + entry+exit of glp
-                current['tx_cost'] = {key: -abs(current['delta'][key]) * self.strategy.parents['GLP'].parameters['hedge_tx_cost'] for key in
+                current['tx_cost'] = {key: -abs(current['delta'][key]) * float(self.parameters.hedge_tx_cost) for key in
                                       GmxAPI.static}
-                current['tx_cost']['total'] = sum(current['tx_cost'].values()) - 2 * GmxAPI.tx_cost * current['actualAum']['total']
-        # done. record.
-        if flatten_dict:
-            self.pnlexplain.append({k: pd.DataFrame(v) for k, v in current.items()})
-        else:
-            self.pnlexplain.append(current)
+                current['tx_cost']['total'] = sum(current['tx_cost'].values()) - 2 * float(self.parameters.hedge_tx_cost) * current['actualAum']['total']
+
+        self.pnlexplain.append(current)
+        return self.pnlexplain
