@@ -49,3 +49,15 @@ conda develop .
 pip install objgraph
 
 pre-commit install
+
+# -------------------------
+# Stake Capital:
+# -------------------------
+
+# ssh-keygen -t ed25519 -C "quant@stake.capital"
+# # manually register key to https://github.com/settings/ssh/new] or:
+# gh ssh-key add ~/.ssh/id_ed25519.pub --title="hummingbot stake"
+# cd hummingbot
+# git remote add stake git@github.com:stake-capital/hummingbot.git
+# git pull stake main
+# conda activate hummingbot && ./clean && ./compile
