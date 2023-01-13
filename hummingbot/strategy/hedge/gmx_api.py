@@ -39,13 +39,13 @@ class GmxAPI:
     vGMX = w3.eth.contract(abi=vGMXABI, address=vGMXAdd).functions
     vGLP = w3.eth.contract(abi=vGLPABI, address=vGLPAdd).functions
 
-    static = {'MIM': {'address': "0x130966628846BFd36ff31a822705796e8cb8C18D", 'decimal': 1e18, 'volatile': False, 'normalized_symbol': 'bla'},
-              'WETH': {'address': "0x49D5c2BdFfac6CE2BFdB6640F4F80f226bc10bAB", 'decimal': 1e18, 'volatile': True, 'normalized_symbol': 'ETH-USDT'},
-              'WBTC': {'address': "0x50b7545627a5162F82A992c33b87aDc75187B218", 'decimal': 1e8, 'volatile': True, 'normalized_symbol': 'BTC-USDT'},
-              'WAVAX': {'address': "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7", 'decimal': 1e18, 'volatile': True, 'normalized_symbol': 'AVAX-USDT'},
-              'USDC': {'address': "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", 'decimal': 1e6, 'volatile': False, 'normalized_symbol': 'bla'},
-              'USDC_E': {'address': "0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664", 'decimal': 1e6, 'volatile': False, 'normalized_symbol': 'bla'},
-              'BTC_E': {'address': "0x152b9d0FdC40C096757F570A51E494bd4b943E50", 'decimal': 1e8, 'volatile': True, 'normalized_symbol': 'BTC-USDT'}}
+    static = {'MIM': {'address': "0x130966628846BFd36ff31a822705796e8cb8C18D", 'decimal': 1e18, 'volatile': False, 'coin': 'bla'},
+              'WETH': {'address': "0x49D5c2BdFfac6CE2BFdB6640F4F80f226bc10bAB", 'decimal': 1e18, 'volatile': True, 'coin': 'ETH'},
+              'WBTC': {'address': "0x50b7545627a5162F82A992c33b87aDc75187B218", 'decimal': 1e8, 'volatile': True, 'coin': 'BTC'},
+              'WAVAX': {'address': "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7", 'decimal': 1e18, 'volatile': True, 'coin': 'AVAX'},
+              'USDC': {'address': "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", 'decimal': 1e6, 'volatile': False, 'coin': 'bla'},
+              'USDC_E': {'address': "0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664", 'decimal': 1e6, 'volatile': False, 'coin': 'bla'},
+              'BTC_E': {'address': "0x152b9d0FdC40C096757F570A51E494bd4b943E50", 'decimal': 1e8, 'volatile': True, 'coin': 'BTC'}}
     reward_static = {}
     check_tolerance = 1e-4
     semaphore_safe_gather_limit = 9
@@ -89,7 +89,11 @@ class GmxAPI:
                     aum += self.guaranteedUsd[key] - self.reservedAmounts[key] * self.pricesDown[key]
                     # add pnl from shorts
                     aum += (self.pricesDown[key] / self.globalShortAveragePrices[key] - 1) * self.globalShortSizes[key]
-                return aum / self.totalSupply['total']
+                try:
+                    return aum / self.totalSupply['total']
+                except Exception as e:
+                    self.logger.error(str(e))
+                    self.logger.info(self.serialize())
 
         def partial_delta(self, key: str, normalized: bool = False) -> float:
             ''' delta in token, includes rewards
@@ -98,13 +102,18 @@ class GmxAPI:
             if normalized:  # this uses normalized input
                 result = 0
                 for token, data in GmxAPI.static.items():
-                    if data['normalized_symbol'] == key:
+                    if data['coin'] in key:
                         result += self.poolAmounts[token]
                         if data['volatile']:
                             result += (- self.reservedAmounts[token] + self.globalShortSizes[token] / self.globalShortAveragePrices[token])
                         if token == 'WAVAX':
                             result += self.rewards['WAVAX']
-                return result / self.totalSupply['total']
+                try:
+                    return result / self.totalSupply['total']
+                except Exception as e:
+                    self.logger.error(str(e))
+                    self.logger.info(self.serialize())
+                    return 0
             else:
                 result = self.poolAmounts[key]
                 if GmxAPI.static[key]['volatile']:
@@ -259,7 +268,7 @@ class GmxAPI:
             current['valuation']['total'] = sum(current['valuation'].values())
             # compute plex
             if len(self.pnlexplain) > 0:
-                previous = list(self.pnlexplain[-1].values())[0]
+                previous = self.pnlexplain[-1]
                 # delta_pnl
                 current = {**current, **{'delta_pnl': {
                     key: previous['delta'][key] * (current['pricesDown'][key] - previous['pricesDown'][key])

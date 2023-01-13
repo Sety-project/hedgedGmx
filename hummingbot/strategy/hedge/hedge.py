@@ -303,9 +303,10 @@ class HedgeStrategy(StrategyPyBase):
             self.hedge()
             # TODO not a proper database format
             pnlexplain_path = os.path.join(Path.home(), 'StakeCap', 'hummingbot', 'data', 'gmx_pnl.csv')
-            pd.DataFrame([{x.timestamp: reform_dict(x)} for x in self.gmx_api.compile_pnlexplain()]).to_csv(pnlexplain_path,
-                                                                                                            index_label='timestamp',
-                                                                                                            mode='w')
+            pnlexplain = pd.DataFrame([{self.gmx_api.state.timestamp: reform_dict(x)} for x in self.gmx_api.compile_pnlexplain()])
+            pnlexplain.to_csv(pnlexplain_path,
+                              index_label='timestamp',
+                              mode='w')
         else:
             self.hedge()
 
